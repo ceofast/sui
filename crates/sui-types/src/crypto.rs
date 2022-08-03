@@ -25,7 +25,6 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, Bytes};
 use sha3::Sha3_256;
-use signature::Signer;
 
 use crate::base_types::{AuthorityName, SuiAddress};
 use crate::committee::{Committee, EpochId};
@@ -43,11 +42,56 @@ pub type AuthoritySignature = Ed25519Signature;
 pub type AggregateAuthoritySignature = Ed25519AggregateSignature;
 
 // Account Objects
-pub type AccountKeyPair = Ed25519KeyPair;
-pub type AccountPublicKey = Ed25519PublicKey;
-pub type AccountPrivateKey = Ed25519PrivateKey;
-pub type AccountSignature = Ed25519Signature;
+pub type DefaultAccountKeyPair = Ed25519KeyPair;
+pub type DefaultAccountPublicKey = Ed25519PublicKey;
+pub type DefaultAccountPrivateKey = Ed25519PrivateKey;
+pub type DefaultAccountSignature = Ed25519Signature;
 
+#[enum_dispatch]
+
+pub enum AccountKeyPair {
+    Ed25519KeyPair,
+    Secp256k1KeyPair,
+}
+
+#[enum_dispatch(AccountKeyPair)]
+pub trait SuiAccountKeyPair {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error>;
+}
+
+impl<T: KeypairTraits> SuiAccountKeyPair for T {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
+        match self.try_sign(msg) {
+            Ok(sig) => Signature::from_bytes(sig.as_bytes()),
+            Err(_) => Err(signature::Error::new()),
+        }
+    }
+}
+
+impl signature::Signer<Signature> for AccountKeyPair {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
+        match self {
+            AccountKeyPair::Ed25519KeyPair(kp) => signature::Signer::try_sign(kp, msg),
+            AccountKeyPair::Secp256k1KeyPair(kp) => signature::Signer::try_sign(kp, msg),
+        }
+    }
+}
+
+// impl Serialize for AccountKeyPair {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let bytes = self.as_ref();
+
+//         if serializer.is_human_readable() {
+//             let s = base64ct::Base64::encode_string(bytes);
+//             serializer.serialize_str(&s)
+//         } else {
+//             serializer.serialize_bytes(bytes)
+//         }
+//     }
+// }
 //
 // Define Bytes representation of the Authority's PublicKey
 //
